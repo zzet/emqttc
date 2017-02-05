@@ -1,51 +1,45 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2012-2016 eMQTT.IO, All Rights Reserved.
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% emqttc received packet parser.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%
+%% Copyright (c) 2013-2017 EMQ Enterprise Inc. All Rights Reserved.
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%% of this software and associated documentation files (the "Software"), to deal
+%% in the Software without restriction, including without limitation the rights
+%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%% copies of the Software, and to permit persons to whom the Software is
+%% furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in all
+%% copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+%% SOFTWARE.
+%%
+%% @doc MQTT Packet Parser.
+%%
 
 -module(emqttc_parser).
 
 -author("Feng Lee <feng@emqtt.io>").
 
--include("emqttc_packet.hrl").
+-include("emqttc.hrl").
 
 %% API
 -export([new/0, parse/2]).
 
-%%%-----------------------------------------------------------------------------
-%% @doc Initialize a parser.
-%% @end
-%%%-----------------------------------------------------------------------------
--spec new() -> none.
-new() -> none.
+-type(parser() :: fun( (binary()) -> any() )).
 
-%%%-----------------------------------------------------------------------------
+%% @doc Initialize a parser
+-spec(new() -> parser()).
+new() ->
+    fun(Bin) -> parse(Bin, none) end.
+
 %% @doc Parse MQTT Packet.
-%% @end
-%%%-----------------------------------------------------------------------------
--spec parse(binary(), none | fun()) -> {ok, mqtt_packet()} | {error, any()} | {more, fun()}.
+-spec(parse(binary(), none | fun()) -> {ok, mqtt_packet()} | {error, any()} | {more, fun()}).
 parse(<<>>, none) ->
     {more, fun(Bin) -> parse(Bin, none) end};
 parse(<<PacketType:4, Dup:1, QoS:2, Retain:1, Rest/binary>>, none) ->
@@ -138,7 +132,7 @@ parse_frame(Bin, #mqtt_packet_header{type = Type,
             <<PacketId:16/big>> = FrameBin,
             wrap(Header, #mqtt_packet_puback{packet_id = PacketId}, Rest);
         {?PUBREL, <<FrameBin:Length/binary, Rest/binary>>} ->
-            1 = Qos,
+            %% 1 = Qos,
             <<PacketId:16/big>> = FrameBin,
             wrap(Header, #mqtt_packet_puback{packet_id = PacketId}, Rest);
         {?PUBCOMP, <<FrameBin:Length/binary, Rest/binary>>} ->

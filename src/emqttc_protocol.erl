@@ -1,38 +1,37 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2012-2016 eMQTT.IO, All Rights Reserved.
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% emqttc client-side protocol handler.
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%
+%% Copyright (c) 2013-2017 EMQ Enterprise Inc. All Rights Reserved.
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%% of this software and associated documentation files (the "Software"), to deal
+%% in the Software without restriction, including without limitation the rights
+%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%% copies of the Software, and to permit persons to whom the Software is
+%% furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in all
+%% copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+%% SOFTWARE.
+%%
+%% @doc Client-Side MQTT Protocol Handler
+%%
+
 -module(emqttc_protocol).
 
 -author("Feng Lee <feng@emqtt.io>").
 
--include("emqttc_packet.hrl").
+-include("emqttc.hrl").
 
 -compile(nowarn_deprecated_function).
 
 %% State API
--export([init/1, set_socket/2]).
+-export([initial_state/1, set_socket/2]).
 
 %% Protocol API
 -export([connect/1,
@@ -47,54 +46,52 @@
          disconnect/1,
          received/2]).
 
--record(proto_state, {
-        socket                  :: inet:socket(),
-        socket_name             :: list() | binary(),
-        proto_ver  = 4          :: mqtt_vsn(),
-        proto_name = <<"MQTT">> :: binary(),
-        client_id               :: binary(),
-        clean_sess = true       :: boolean(),
-        keepalive  = ?KEEPALIVE :: non_neg_integer(),
-        will_flag  = false      :: boolean(),
-        will_msg                :: mqtt_message(),
-        username                :: binary() | undefined,
-        password                :: binary() | undefined,
-        packet_id = 1           :: mqtt_packet_id(),
-        subscriptions = #{}     :: map(),
-        awaiting_ack  = #{}     :: map(),
-        awaiting_rel  = #{}     :: map(),
-        awaiting_comp = #{}     :: map(),
-        logger                  :: gen_logger:logmod()}).
+-record(proto_state,
+        { socket                  :: inet:socket(),
+          socket_name             :: list() | binary(),
+          proto_ver  = 4          :: mqtt_vsn(),
+          proto_name = <<"MQTT">> :: binary(),
+          client_id               :: binary(),
+          clean_session = true    :: boolean(),
+          keepalive  = ?KEEPALIVE :: non_neg_integer(),
+          will_flag  = false      :: boolean(),
+          will_msg                :: mqtt_message(),
+          username                :: binary() | undefined,
+          password                :: binary() | undefined,
+          subscriptions           :: map(),
+          max_inflight = 32,      :: integer(),
+          inflight                :: gb_trees:tree(),
+          awaiting_rel            :: map(),
+          next_msg_id = 1         :: mqtt_packet_id(),
+          logger                  :: gen_logger:logmod() }).
 
--type proto_state() :: #proto_state{}.
+-type(proto_state() :: #proto_state{}).
 
 -export_type([proto_state/0]).
 
-%%%=============================================================================
-%%% API
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% API
+%%------------------------------------------------------------------------------
 
-%%------------------------------------------------------------------------------
 %% @doc Init protocol with MQTT options.
-%% @end
-%%------------------------------------------------------------------------------
--spec init(MqttOpts) -> State when
-    MqttOpts :: list(tuple()),
-    State    :: proto_state().
-init(MqttOpts) ->
-	init(MqttOpts, #proto_state{client_id   = random_id(),
-                                will_msg    = #mqtt_message{}}).
+-spec(initial_state(Opts :: list(tuple())) -> State :: proto_state()).
+initial_state(Opts) ->
+	init(Opts, #proto_state{client_id = random_id(),
+                            will_msg  = #mqtt_message{},
+                            subscriptions = #{},
+                            inflight = gb_trees:empty(),
+                            awaiting_rel = #{}}).
 
 init([], State) ->
     State;
 init([{client_id, ClientId} | Opts], State) when is_binary(ClientId) ->
     init(Opts, State#proto_state{client_id = ClientId});
-init([{proto_ver, ?MQTT_PROTO_V31} | Opts], State) ->
-    init(Opts, State#proto_state{proto_ver = ?MQTT_PROTO_V31, proto_name = <<"MQIsdp">>});
-init([{proto_ver, ?MQTT_PROTO_V311} | Opts], State) ->
-    init(Opts, State#proto_state{proto_ver = ?MQTT_PROTO_V311, proto_name = <<"MQTT">>});
-init([{clean_sess, CleanSess} | Opts], State) when is_boolean(CleanSess) ->
-    init(Opts, State#proto_state{clean_sess = CleanSess});
+init([{proto_ver, ?MQTT_PROTO_V3} | Opts], State) ->
+    init(Opts, State#proto_state{proto_ver = ?MQTT_PROTO_V3, proto_name = <<"MQIsdp">>});
+init([{proto_ver, ?MQTT_PROTO_V4} | Opts], State) ->
+    init(Opts, State#proto_state{proto_ver = ?MQTT_PROTO_V4, proto_name = <<"MQTT">>});
+init([{clean_session, CleanSess} | Opts], State) when is_boolean(CleanSess) ->
+    init(Opts, State#proto_state{clean_session = CleanSess});
 init([{keepalive, KeepAlive} | Opts], State) when is_integer(KeepAlive) ->
     init(Opts, State#proto_state{keepalive = KeepAlive});
 init([{username, Username} | Opts], State) when is_binary(Username)->
@@ -134,34 +131,24 @@ random_id() ->
     {ok, Host} = inet:gethostname(),
     list_to_binary(["emqttc_", Host, "_" | io_lib:format("~12.16.0b~8.16.0b", [I1, I2])]).
 
-%%------------------------------------------------------------------------------
-%% @doc Set socket
-%% @end
-%%0-----------------------------------------------------------------------------
+%% @doc Set Socket
 set_socket(State, Socket) ->
     {ok, SockName} = emqttc_socket:sockname_s(Socket),
-    State#proto_state{
-        socket      = Socket,
-        socket_name = SockName
-    }.
+    State#proto_state{socket = Socket, socket_name = SockName}.
 
-%%------------------------------------------------------------------------------
 %% @doc Send CONNECT Packet
-%% @end
-%%------------------------------------------------------------------------------
 connect(State = #proto_state{client_id  = ClientId,
                              proto_ver  = ProtoVer, 
                              proto_name = ProtoName,
                              clean_sess = CleanSess,
                              keepalive  = KeepAlive,
                              will_flag  = WillFlag,
-                             will_msg   = #mqtt_message{qos = WillQos, 
-                                                        retain = WillRetain, 
-                                                        topic = WillTopic, 
-                                                        payload = WillMsg},
+                             will_msg   = WillMsg,
                              username   = Username,
                              password   = Password}) ->
 
+    #mqtt_message{qos = WillQos, retain = WillRetain,
+                  topic = WillTopic, payload = WillMsg} = WillMsg, 
 
     Connect = #mqtt_packet_connect{client_id   = ClientId,
                                    proto_ver   = ProtoVer,
@@ -178,57 +165,56 @@ connect(State = #proto_state{client_id  = ClientId,
     
     send(?CONNECT_PACKET(Connect), State).
 
-%%------------------------------------------------------------------------------
-%% @doc
-%% Publish Message to Broker:
 %%
-%% Qos0 message sent directly.
-%% Qos1, Qos2 messages should be stored first.
+%% @doc Publish Message to Broker:
+%%
+%%  1. Qos0 message sent directly.
+%%  2. Qos1, Qos2 messages should be stored first.
 %%
 %% @end
-%%------------------------------------------------------------------------------
-publish(Message = #mqtt_message{qos = ?QOS_0}, State) ->
-    {ok, NewState} = send(emqttc_message:to_packet(Message), State),
+%%
+publish(Msg = #mqtt_message{qos = ?QOS_0}, State) ->
+    {ok, NewState} = send(emqttc_message:to_packet(Msg), State),
     {ok, undefined, NewState};
 
-publish(Message = #mqtt_message{qos = Qos}, State = #proto_state{
-                packet_id = PacketId, awaiting_ack = AwaitingAck})
+publish(Msg = #mqtt_message{qos = Qos},
+        State = #proto_state{next_msg_id = MsgId, inflight = Inflight})
         when (Qos =:= ?QOS_1) orelse (Qos =:= ?QOS_2) ->
-    Message1 = Message#mqtt_message{msgid = PacketId},
-    Message2 =
-    if
-        Qos =:= ?QOS_2 -> Message1#mqtt_message{dup = false};
-        true -> Message1
-    end,
-    Awaiting1 = maps:put(PacketId, Message2, AwaitingAck),
-	{ok, NewState} = send(emqttc_message:to_packet(Message2), 
-                              next_packet_id(State#proto_state{awaiting_ack = Awaiting1})),
-    {ok, PacketId, NewState}.
+    Msg1 = Msg#mqtt_message{msgid = MsgId},
+    Msg2 = if
+               Qos =:= ?QOS_2 -> Msg1#mqtt_message{dup = false};
+               true -> Msg1
+           end,
+    Inflight1 = gb_trees:insert(MsgId, Msg2, Inflight),
+	{ok, NewState} = send(emqttc_message:to_packet(Msg2),
+                          next_msg_id(State#proto_state{inflight = Inflight1})),
+    {ok, MsgId, NewState}.
 
-puback(PacketId, State) when is_integer(PacketId) ->
-    send(?PUBACK_PACKET(?PUBACK, PacketId), State).
+puback(MsgId, State) when is_integer(MsgId) ->
+    send(?PUBACK_PACKET(?PUBACK, MsgId), State).
 
-pubrec(PacketId, State) when is_integer(PacketId) ->
-    send(?PUBACK_PACKET(?PUBREC, PacketId), State).
+pubrec(MsgId, State) when is_integer(MsgId) ->
+    send(?PUBACK_PACKET(?PUBREC, MsgId), State).
 
-pubrel(PacketId, State) when is_integer(PacketId) ->
-    send(?PUBREL_PACKET(PacketId), State). %% qos = 1
+pubrel(MsgId, State) when is_integer(MsgId) ->
+    send(?PUBREL_PACKET(MsgId), State). %% qos = 2
 
-pubcomp(PacketId, State) when is_integer(PacketId) ->
-    send(?PUBACK_PACKET(?PUBCOMP, PacketId), State).
+pubcomp(MsgId, State) when is_integer(MsgId) ->
+    send(?PUBACK_PACKET(?PUBCOMP, MsgId), State).
 
-subscribe(Topics, State = #proto_state{packet_id = PacketId,
-                                               subscriptions = SubMap,
-                                               logger = Logger}) ->
-    Resubs = [Topic || {Name, _Qos} = Topic <- Topics, maps:is_key(Name, SubMap)], 
-    case Resubs of
+subscribe(Topics, State = #proto_state{next_msg_id   = MsgId,
+                                       subscriptions = SubMap,
+                                       logger        = Logger}) ->
+    DupSubs = [Topic || {Name, _Qos} = Topic <- Topics, maps:is_key(Name, SubMap)], 
+    case DupSubs of
         [] -> ok;
-        _  -> Logger:warning("[~s] resubscribe ~p", [logtag(State), Resubs])
+        _  -> Logger:warning("[~s] resubscribe ~p", [logtag(State), DupSubs])
     end,
     SubMap1 = lists:foldl(fun({Name, Qos}, Acc) -> maps:put(Name, Qos, Acc) end, SubMap, Topics),
-    %% send packet
-    {ok, NewState} = send(?SUBSCRIBE_PACKET(PacketId, Topics), next_packet_id(State#proto_state{subscriptions = SubMap1})),
-    {ok, PacketId, NewState}.
+    %% Send packet
+    {ok, NewState} = send(?SUBSCRIBE_PACKET(MsgId, Topics),
+                          next_msg_id(State#proto_state{subscriptions = SubMap1})),
+    {ok, MsgId, NewState}.
 
 unsubscribe(Topics, State = #proto_state{subscriptions = SubMap, packet_id = PacketId, logger = Logger}) ->
     case Topics -- maps:keys(SubMap) of
@@ -246,7 +232,7 @@ ping(State) ->
 disconnect(State) ->
     send(?PACKET(?DISCONNECT), State).
 
-received('CONNACK', State = #proto_state{clean_sess = true}) ->
+received('CONNACK', State = #proto_state{clean_session = true}) ->
     %%TODO: Send awaiting...
     {ok, State};
 
@@ -262,12 +248,14 @@ received({'PUBLISH', Packet = ?PUBLISH_PACKET(?QOS_2, _Topic, PacketId, _Payload
     pubrec(PacketId, State),
     {ok, State#proto_state{awaiting_rel = maps:put(PacketId, Packet, AwaitingRel)}};
 
-received({'PUBACK', PacketId}, State = #proto_state{awaiting_ack = AwaitingAck, logger = Logger}) ->
-    case maps:is_key(PacketId, AwaitingAck) of
-        true -> ok;
-        false -> Logger:warning("[~s] PUBACK PacketId '~p' not found!", [logtag(State), PacketId])
-    end,
-    {ok, State#proto_state{awaiting_ack = maps:remove(PacketId, AwaitingAck)}};
+received({'PUBACK', PacketId}, State = #proto_state{inflight = Inflight, logger = Logger}) ->
+    case gb_trees:is_defined(PacketId, Inflight) of
+        true ->
+            {ok, State#proto_state{inflight = gb_trees:delete(PacketId, Inflight)}};
+        false ->
+            Logger:warning("[~s] PUBACK PacketId '~p' not found!", [logtag(State), PacketId]),
+            {ok, State}
+    end;
 
 received({'PUBREC', PacketId}, State = #proto_state{awaiting_ack = AwaitingAck, 
                                                     awaiting_comp = AwaitingComp, 
@@ -318,7 +306,7 @@ received({'UNSUBACK', _PacketId}, State) ->
 send(Packet, State = #proto_state{socket = Socket, logger = Logger}) ->
     LogTag = logtag(State),
     Logger:debug("[~s] SENT: ~s", [LogTag, emqttc_packet:dump(Packet)]),
-    Data = emqttc_serialiser:serialise(Packet),
+    Data = emqttc_serializer:serialize(Packet),
     Logger:debug("[~s] SENT: ~p", [LogTag, Data]),
     emqttc_socket:send(Socket, Data),
     {ok, State}.
@@ -331,5 +319,4 @@ next_packet_id(State = #proto_state{packet_id = Id }) ->
 
 logtag(#proto_state{socket_name = SocketName, client_id = ClientId}) ->
     io_lib:format("~s@~s", [ClientId, SocketName]).
-
 

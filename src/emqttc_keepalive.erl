@@ -1,39 +1,34 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2012-2016 eMQTT.IO, All Rights Reserved.
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc emqttc socket keepalive.
-%%%
-%%% @author Feng Lee <feng@emqtt.io>
-%%%-----------------------------------------------------------------------------
+%%
+%% Copyright (c) 2013-2017 EMQ Enterprise Inc. All Rights Reserved.
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%% of this software and associated documentation files (the "Software"), to deal
+%% in the Software without restriction, including without limitation the rights
+%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%% copies of the Software, and to permit persons to whom the Software is
+%% furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in all
+%% copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+%% SOFTWARE.
+%%
+%% @doc Socket KeepAlive
+%%
 
 -module(emqttc_keepalive).
 
--record(keepalive, {socket,
-                    stat_name,
-                    stat_val = 0,
-                    timeout_sec,
-                    timeout_msg,
-                    timer_ref}).
+-author("Feng Lee <feng@emqtt.io>").
 
--opaque keepalive() :: #keepalive{} | undefined.
+-record(keepalive, {socket, stat_name, stat_val = 0, timeout_sec, timeout_msg, timer_ref}).
+
+-opaque(keepalive() :: #keepalive{} | undefined).
 
 -export_type([keepalive/0]).
 
@@ -41,12 +36,12 @@
 -export([new/3, start/1, restart/1, resume/1, cancel/1]).
 
 %% @doc Create a KeepAlive.
--spec new({Socket, StatName}, TimeoutSec, TimeoutMsg) -> KeepAlive when
-    Socket        :: inet:socket() | ssl:sslsocket(),
-    StatName      :: recv_oct | send_oct,
-    TimeoutSec    :: non_neg_integer(),
-    TimeoutMsg    :: tuple(),
-    KeepAlive     :: keepalive().
+-spec(new({Socket, StatName}, TimeoutSec, TimeoutMsg) -> KeepAlive when
+    Socket     :: inet:socket() | ssl:sslsocket(),
+    StatName   :: recv_oct | send_oct,
+    TimeoutSec :: non_neg_integer(),
+    TimeoutMsg :: tuple(),
+    KeepAlive  :: keepalive()).
 new({_Socket, _StatName}, 0, _TimeoutMsg) ->
     undefined;
 new({Socket, StatName}, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
@@ -56,7 +51,7 @@ new({Socket, StatName}, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
                timeout_msg = TimeoutMsg}.
 
 %% @doc Start KeepAlive
--spec start(keepalive()) -> {ok, keepalive()} | {error, any()}.
+-spec(start(keepalive()) -> {ok, keepalive()} | {error, any()}).
 start(undefined) ->
     {ok, undefined};
 start(KeepAlive = #keepalive{socket = Socket, stat_name = StatName, 

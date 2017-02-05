@@ -1,37 +1,17 @@
-.PHONY: test
+PROJECT = emqttc
+PROJECT_DESCRIPTION = Erlang MQTT Client
+PROJECT_VERSION = 1.0
 
-ERL=erl
-BEAMDIR=./deps/*/ebin ./ebin
-REBAR=./rebar
-REBAR_GEN=../../rebar
-DIALYZER=dialyzer
+DEPS = gen_logger
+dep_gen_logger = git https://github.com/emqtt/gen_logger.git
 
-#update-deps 
-all: get-deps compile
+EUNIT_OPTS = verbose
 
-get-deps:
-	@$(REBAR) get-deps
+CT_SUITES = emqttc
 
-update-deps:
-	@$(REBAR) update-deps
+COVER = true
 
-compile:
-	@$(REBAR) compile
+include erlang.mk
 
-xref:
-	@$(REBAR) xref skip_deps=true
+app:: rebar.config
 
-clean:
-	@$(REBAR) clean
-
-test:
-	@$(REBAR) skip_deps=true eunit
-
-edoc:
-	@$(REBAR) doc
-
-dialyzer: compile
-	@$(DIALYZER) ebin deps/ossp_uuid/ebin
-
-setup-dialyzer:
-	@$(DIALYZER) --build_plt --apps kernel stdlib mnesia eunit erts crypto
