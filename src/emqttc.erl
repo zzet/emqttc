@@ -19,7 +19,7 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%
-%% @doc emqttc main client api.
+%% @doc MQTT Client.
 %%
 
 -module(emqttc).
@@ -28,13 +28,11 @@
 
 -include("emqttc.hrl").
 
--import(proplists, [get_value/2, get_value/3]).
-
 %% Start application
 -export([start/0]).
 
 %% Start emqttc client
--export([start_link/0, start_link/1, start_link/2, start_link/3]).
+-export([connect/1, connect/2, connect/3]).
 
 %% Lookup topics
 -export([topics/1]).
@@ -66,26 +64,30 @@
 
 -endif.
 
--type mqttc_opt() :: {host, inet:ip_address() | string()}
-                   | {port, inet:port_number()}
-                   | {client_id, binary()}
-                   | {clean_sess, boolean()}
-                   | {keepalive, non_neg_integer()}
-                   | {proto_ver, mqtt_vsn()}
-                   | {username, binary()}
-                   | {password, binary()}
-                   | {will, list(tuple())}
-                   | {connack_timeout, pos_integer()}
-                   | {puback_timeout,  pos_integer()}
-                   | {suback_timeout,  pos_integer()}
-                   | ssl | {ssl, [ssl:ssloption()]}
-                   | {logger, atom() | {atom(), atom()}}
-                   | auto_resub
-                   | {reconnect, non_neg_integer() | {non_neg_integer(), non_neg_integer()} | false}.
+-import(proplists, [get_value/2, get_value/3]).
 
--type mqtt_qosopt() :: qos0 | qos1 | qos2 | mqtt_qos().
+-type(connect_option() :: {host, inet:ip_address() | inet:hostname()}
+                        | {port, inet:port_number()}
+                        | {client_id, binary()}
+                        | {username, binary()}
+                        | {password, binary()}
+                        | clean_session | {clean_session, boolean()}
+                        | {keepalive, non_neg_integer()}
+                        | {proto_ver, mqtt_vsn()}
+                        | {will, list(tuple())}
+                        | {connack_timeout, pos_integer()}
+                        | {puback_timeout,  pos_integer()}
+                        | {suback_timeout,  pos_integer()}
+                        | ssl | {ssl, boolean() | required}
+                        | {ssl_opts, [ssl:ssl_option()]}
+                        | {tcp_opts, [inet:tcp_opts()]}
+                        | {logger, gen_logger:logcfg()}
+                        | auto_resub | {auto_resub, boolean()}
+                        | {reconnect, non_neg_integer() | {non_neg_integer(), non_neg_integer()} | false}.
 
--type mqtt_pubopt() :: mqtt_qosopt() | {qos, mqtt_qos()} | {retain, boolean()}.
+-type(qos_option() :: qos0 | qos1 | qos2 | mqtt_qos()).
+
+-type(publish_option() :: qos_option() | {qos, mqtt_qos()} | {retain, boolean()}).
 
 -record(state, {parent              :: pid(),
                 name                :: atom(),
@@ -101,6 +103,7 @@
                 inflight_reqs = #{} :: map(),
                 inflight_msgid      :: pos_integer(),
                 auto_resub = false  :: boolean(),
+                %% Retry Interval
                 retry_interval = 20000,
                 %% Retry Timer
                 retry_timer,
@@ -133,13 +136,10 @@
 %%%=============================================================================
 
 start() ->
-    application:start(emqttc).
+    {ok, _} = application:ensure_all_started(emqttc), ok.
 
-%%------------------------------------------------------------------------------
-%% @doc Start emqttc client with default options.
-%% @end
-%%------------------------------------------------------------------------------
--spec start_link() -> {ok, Client :: pid()} | ignore | {error, term()}.
+%% @doc Connect the broker with default options.
+-spec(connect() -> {ok, Client :: pid()} | ignore | {error, term()}).
 start_link() ->
     start_link([]).
 
